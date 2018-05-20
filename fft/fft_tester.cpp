@@ -16,7 +16,7 @@ const float freq     = 100.;
 const float T        = 0.001;
 const float omega    = 2 * pi * freq;
 
-void doTest(float frequency, int numSamples, int numBlocks = 1, bool printTime = true, bool outputToFile = false)
+void doTest(float frequency, int numSamples, bool printTime = false, bool outputToFile = false)
 {
    ostringstream ostr;
    ostr << "complexFft(" << setw(8) << numSamples << ")";
@@ -32,12 +32,6 @@ void doTest(float frequency, int numSamples, int numBlocks = 1, bool printTime =
       samples.push_back(MyComplex(cos(rad), sin(rad)));
    }
 
-   std::vector<std::vector<MyComplex> > blocks;
-   for (auto i = 0; i < numBlocks; ++i)
-   {
-      blocks.push_back(samples);
-   }
-
    if (outputToFile)
    {
       for (auto&& s : samples)
@@ -46,22 +40,18 @@ void doTest(float frequency, int numSamples, int numBlocks = 1, bool printTime =
       }
    }
 
-   std::vector<std::vector<MyComplex> > result;
    {
-      if (printTime)
+      const int numTimes = 50;
+      TimeStat ts(ostr.str(), numTimes);
+      for (auto i=0; i<numTimes; ++i)
       {
-         TimeStat ts(ostr.str(), blocks.size());
-         result = GpuUtils::fft(blocks);
-      }
-      else
-      {
-         result = GpuUtils::fft(blocks);
+         GpuUtils::fft(samples, printTime);
       }
    }
 
    if (outputToFile)
    {
-      for (auto&& s : result[0])
+      for (auto s : samples)
       {
          ofile << s.real() << ", " << s.imag() << "\n";
       }
@@ -72,7 +62,7 @@ void doTest(float frequency, int numSamples, int numBlocks = 1, bool printTime =
 
 int main(int argc, char* argv[])
 {
-   doTest(5.0, 16384, 1, false);
+   doTest(5.0, 16384);
 
    doTest(5.0, 1024);
    doTest(5.0, 1024);
@@ -86,5 +76,5 @@ int main(int argc, char* argv[])
    doTest(5.0, 16384*16);
    doTest(5.0, 16384*32);
    doTest(5.0, 16384*64);
-   doTest(5.0, 16384*64, 10, true, true);
+   doTest(5.0, 16384*64, true, true);
 }

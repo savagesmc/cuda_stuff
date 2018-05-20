@@ -17,8 +17,11 @@ public:
    ~TimeStat() {
       using namespace std;
       using namespace std::chrono;
-      steady_clock::time_point stop = steady_clock::now();
-      duration<double> dur = (stop - start) / numIter_;
-      cout << label << " " << (dur.count()) << endl;
+      if (numIter_)
+      {
+         steady_clock::time_point stop = steady_clock::now();
+         duration<double> dur = (stop - start) / numIter_;
+         cout << label << " " << (dur.count()) << endl;
+      }
    }
 };

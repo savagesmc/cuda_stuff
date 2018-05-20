@@ -39,75 +39,45 @@ namespace GpuUtils
 
 typedef float2 Complex;
 
-vector<vector<MyComplex> > fft(const vector<vector<MyComplex> >& in)
+void fft(vector<MyComplex>& samples, bool debug)
 {
-   vector<vector<MyComplex> > out;
-   if (in.size() < 1)
-      return out;
+   const int mem_size = sizeof(MyComplex) * samples.size();
 
-   const int numSamples = in[0].size();
-   const int mem_size = sizeof(Complex) * numSamples * in.size();
-
-   // Allocate device memory for signal
-   Complex *h_signal = (Complex *)malloc(mem_size);
-   Complex *h_ptr = h_signal;
-   for (int i=0; i<in.size(); ++i)
-   {
-      vector<MyComplex>::const_iterator it = in[i].begin();
-      vector<MyComplex>::const_iterator end = in[i].end();
-      for (; it != end; ++it)
-      {
-         h_ptr->x = it->real();
-         h_ptr->y = it->imag();
-         ++h_ptr;
-      }
-   }
+   const int numIter = (debug) ? 1 : 0;
 
    Complex *d_signal;
-   Complex *d_signal2;
    {
-      TimeStat("              malloc:");
+      TimeStat("              malloc:", numIter);
       checkCudaErrors(cudaMalloc((void **)&d_signal, mem_size));
-      checkCudaErrors(cudaMalloc((void **)&d_signal2, mem_size));
    }
    {
-      TimeStat("    memcpy to device:");
-      checkCudaErrors(cudaMemcpy(d_signal, h_signal, mem_size, cudaMemcpyHostToDevice));
+      TimeStat("    memcpy to device:", numIter);
+      checkCudaErrors(cudaMemcpy(d_signal, &samples[0], mem_size, cudaMemcpyHostToDevice));
    }
 
    // CUFFT plan simple API
    cufftHandle plan;
    {
-      TimeStat("               cufft:");
-      checkCudaErrors(cufftPlan1d(&plan, numSamples, CUFFT_C2C, in.size()));
-      checkCudaErrors(cufftExecC2C(plan, (cufftComplex *)d_signal, (cufftComplex *)d_signal2, CUFFT_FORWARD));
+      TimeStat("               cufft:", numIter);
+      checkCudaErrors(cufftPlan1d(&plan, samples.size(), CUFFT_C2C, 1));
+      checkCudaErrors(cufftExecC2C(plan, (cufftComplex *)d_signal, (cufftComplex *)d_signal, CUFFT_FORWARD));
    }
 
    {
-      TimeStat("  memcpy from device:");
-      checkCudaErrors(cudaMemcpy(h_signal, d_signal2, mem_size, cudaMemcpyDeviceToHost));
+      TimeStat("  memcpy from device:", numIter);
+      checkCudaErrors(cudaMemcpy(&samples[0], d_signal, mem_size, cudaMemcpyDeviceToHost));
    }
 
-   h_ptr = h_signal;
-   for (int i=0; i<in.size(); ++i)
    {
-      out.push_back(vector<MyComplex>(numSamples));
-      vector<MyComplex>::iterator oit = out[i].begin();
-      vector<MyComplex>::iterator oend = out[i].end();
-      for (; oit != oend; ++oit)
-      {
-         *oit = MyComplex(h_ptr->x, h_ptr->y);
-         ++h_ptr;
-      }
+      TimeStat("  destroy fft plan", numIter);
+      checkCudaErrors(cufftDestroy(plan));
    }
 
    // Deallocate
-   checkCudaErrors(cufftDestroy(plan));
-   free(h_signal);
-   checkCudaErrors(cudaFree(d_signal));
-   checkCudaErrors(cudaFree(d_signal2));
-
-   return out;
+   {
+      TimeStat("  free device memory", numIter);
+      checkCudaErrors(cudaFree(d_signal));
+   }
 }
 
 }
