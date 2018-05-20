@@ -5,5 +5,6 @@
 namespace GpuUtils
 {
    typedef std::complex<float> MyComplex;
-   std::vector<MyComplex> fft(const std::vector<MyComplex>& samples);
+   typedef std::vector<MyComplex> MyComplexVect;
+   std::vector<MyComplexVect> fft(const std::vector<MyComplexVect>& samples);
 }
