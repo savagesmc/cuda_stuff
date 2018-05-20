@@ -1,31 +1,6 @@
-/*
- * Copyright 1993-2015 NVIDIA Corporation.  All rights reserved.
- *
- * Please refer to the NVIDIA end user license agreement (EULA) associated
- * with this source code for terms and conditions that govern your use of
- * this software. Any use, reproduction, disclosure, or distribution of
- * this software and related documentation outside the terms of the EULA
- * is strictly prohibited.
- *
- */
-
-/*
-* Copyright 1993-2014 NVIDIA Corporation.  All rights reserved.
-*
-* Please refer to the NVIDIA end user license agreement (EULA) associated
-* with this source code for terms and conditions that govern your use of
-* this software. Any use, reproduction, disclosure, or distribution of
-* this software and related documentation outside the terms of the EULA
-* is strictly prohibited.
-*
-*/
-
-/* Example showing the use of CUFFT for fast 1D-convolution using FFT. */
-
-// includes, system
 #include "gpufft.h"
 
-// includes, project
+#include <memory>
 #include <cuda_runtime.h>
 #include <cufft.h>
 #include <cufftXt.h>
@@ -34,50 +9,64 @@
 
 using namespace std;
 
+namespace
+{
+   typedef float2 GpuComplex;
+}
+
 namespace GpuUtils
 {
 
-typedef float2 Complex;
-
-void fft(vector<MyComplex>& samples, bool debug)
+class FftEngine::Impl
 {
-   const int mem_size = sizeof(MyComplex) * samples.size();
-
-   const int numIter = (debug) ? 1 : 0;
-
-   Complex *d_signal;
+   bool debug_;
+   int devMemSize_;
+   GpuComplex *devMem_;
+   cufftHandle plan_;
+public:
+   Impl(int size)
+   : debug_(false)
+     , devMemSize_(sizeof(GpuComplex) * size)
+     , devMem_(nullptr)
    {
-      TimeStat("              malloc:", numIter);
-      checkCudaErrors(cudaMalloc((void **)&d_signal, mem_size));
-   }
-   {
-      TimeStat("    memcpy to device:", numIter);
-      checkCudaErrors(cudaMemcpy(d_signal, &samples[0], mem_size, cudaMemcpyHostToDevice));
-   }
-
-   // CUFFT plan simple API
-   cufftHandle plan;
-   {
-      TimeStat("               cufft:", numIter);
-      checkCudaErrors(cufftPlan1d(&plan, samples.size(), CUFFT_C2C, 1));
-      checkCudaErrors(cufftExecC2C(plan, (cufftComplex *)d_signal, (cufftComplex *)d_signal, CUFFT_FORWARD));
+      checkCudaErrors(cudaMalloc((void **)&devMem_, devMemSize_));
+      checkCudaErrors(cufftPlan1d(&plan_, size, CUFFT_C2C, 1));
    }
 
+   ~Impl()
    {
-      TimeStat("  memcpy from device:", numIter);
-      checkCudaErrors(cudaMemcpy(&samples[0], d_signal, mem_size, cudaMemcpyDeviceToHost));
+      checkCudaErrors(cufftDestroy(plan_));
+      checkCudaErrors(cudaFree(devMem_));
    }
 
+   void debug(bool enableDisable)
    {
-      TimeStat("  destroy fft plan", numIter);
-      checkCudaErrors(cufftDestroy(plan));
+      debug_ = enableDisable;
    }
 
-   // Deallocate
+   void operator()(std::vector<Complex>& samples)
    {
-      TimeStat("  free device memory", numIter);
-      checkCudaErrors(cudaFree(d_signal));
+      checkCudaErrors(cudaMemcpy(devMem_, &samples[0], devMemSize_, cudaMemcpyHostToDevice));
+      checkCudaErrors(cufftExecC2C(plan_, (cufftComplex *)devMem_, (cufftComplex *)devMem_, CUFFT_FORWARD));
+      checkCudaErrors(cudaMemcpy(&samples[0], devMem_, devMemSize_, cudaMemcpyDeviceToHost));
    }
+};
+
+FftEngine::FftEngine(int size)
+: impl_(new FftEngine::Impl(size))
+{ }
+
+FftEngine::~FftEngine()
+{ }
+
+void FftEngine::debug(bool enableDisable)
+{
+   impl_->debug(enableDisable);
+}
+
+void FftEngine::operator()(std::vector<Complex>& samples)
+{
+   impl_->operator()(samples);
 }
 
 }

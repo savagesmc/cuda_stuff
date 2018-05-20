@@ -8,7 +8,8 @@
 
 using namespace std;
 using namespace std::chrono;
-using GpuUtils::MyComplex;
+
+typedef GpuUtils::FftEngine::Complex Complex;
 
 const float pi = atan2(1.0, 1.0) * 4.0;
 
@@ -24,12 +25,12 @@ void doTest(float frequency, int numSamples, bool printTime = false, bool output
    ofstream ofile("output.csv");
    ofstream ifile("input.csv");
 
-   std::vector<MyComplex> samples;
+   std::vector<Complex> samples;
    for (auto i = 0; i < numSamples; ++i)
    {
       auto t = i * T;
       auto rad = omega * t;
-      samples.push_back(MyComplex(cos(rad), sin(rad)));
+      samples.push_back(Complex(cos(rad), sin(rad)));
    }
 
    if (outputToFile)
@@ -41,11 +42,13 @@ void doTest(float frequency, int numSamples, bool printTime = false, bool output
    }
 
    {
+      GpuUtils::FftEngine fft(samples.size());
+
       const int numTimes = 50;
       TimeStat ts(ostr.str(), numTimes);
       for (auto i=0; i<numTimes; ++i)
       {
-         GpuUtils::fft(samples, printTime);
+         fft(samples);
       }
    }
 
