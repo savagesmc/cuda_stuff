@@ -1,15 +1,20 @@
+#ifndef GPU_UTILS_GPU_FFT_H
+#define GPU_UTILS_GPU_FFT_H
 #pragma once
+
 #include <vector>
 #include <complex>
 #include <memory>
 
+#include "FftTypes.h"
+
 namespace GpuUtils
 {
+   using Signals::Complex;
+
    class FftEngine
    {
    public:
-
-      typedef std::complex<float> Complex;
 
       FftEngine(int size);
       ~FftEngine();
@@ -23,3 +28,5 @@ namespace GpuUtils
       std::unique_ptr<Impl> impl_;
    };
 }
+
+#endif

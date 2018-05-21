@@ -4,12 +4,13 @@ project(smc_fft_cuda LANGUAGES CXX CUDA)
 include(CTest)
 
 add_library(smc_fft_lib_cuda
-   gpufft.cu
-   gpufft.h
+   GpuFft.cu
+   GpuFft.h
+   Fft.cpp
+   Fft.h
    )
 
 target_compile_features(smc_fft_lib_cuda PUBLIC cxx_std_11)
-
 
 add_executable(fft_test fft_tester.cpp)
 

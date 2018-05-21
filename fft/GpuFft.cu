@@ -1,4 +1,4 @@
-#include "gpufft.h"
+#include "GpuFft.h"
 
 #include <memory>
 #include <cuda_runtime.h>
@@ -25,9 +25,9 @@ class FftEngine::Impl
    cufftHandle plan_;
 public:
    Impl(int size)
-   : debug_(false)
-     , devMemSize_(sizeof(GpuComplex) * size)
-     , devMem_(nullptr)
+   :  debug_(false)
+    , devMemSize_(sizeof(GpuComplex) * size)
+    , devMem_(nullptr)
    {
       checkCudaErrors(cudaMalloc((void **)&devMem_, devMemSize_));
       checkCudaErrors(cufftPlan1d(&plan_, size, CUFFT_C2C, 1));
