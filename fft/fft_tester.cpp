@@ -42,7 +42,7 @@ void doTest(Signals::Fft fft, float frequency, int numSamples, bool printTime = 
    }
 
    {
-      const int numTimes = 50;
+      const int numTimes = 5000;
       TimeStat ts(ostr.str(), numTimes);
       for (auto i=0; i<numTimes; ++i)
       {
@@ -54,7 +54,7 @@ void doTest(Signals::Fft fft, float frequency, int numSamples, bool printTime = 
 
    std::vector<Complex> resultSamps;
    {
-      const int numTimes = 50;
+      const int numTimes = 5000;
       TimeStat ts(ostr.str(), numTimes);
       for (auto i=0; i<numTimes; ++i)
       {
@@ -88,5 +88,5 @@ int main(int argc, char* argv[])
    // doTest(fft, 5.0, 16384*16);
    // doTest(fft, 5.0, 16384*32);
    doTest(Signals::Fft(16384*64), 5.0, 16384*64);
-   // doTest(fft, 5.0, 16384*64, true, true);
+   doTest(Signals::Fft(16384*64), 5.0, 16384*64, true, true);
 }
