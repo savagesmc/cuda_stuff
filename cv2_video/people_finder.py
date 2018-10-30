@@ -1,45 +1,145 @@
-import cv2, argparse
+import cv2, argparse, json, sys
+import subprocess as sp
 import numpy as np
+import scipy, scipy.signal
+import matplotlib.pyplot as plt
 
-#################### Setting up parameters ################
+''' Give a json from ffprobe command line
 
-#OpenCV is notorious for not being able to good to
-# predict how many frames are in a video. The point here is just to
-# populate the "desired_frames" list for all the individual frames
-# you'd like to capture.
+@vid_file_path : The absolute (full) path of the video file, string.
+'''
+def probe(vid_file_path):
+   if type(vid_file_path) != str:
+      raise Exception('Gvie ffprobe a full file path of the video')
+      return
 
-def process(cap, out):
-   fps = cap.get(cv2.CAP_PROP_FPS)
-   est_video_length_minutes = 120         # Round up if not sure.
-   est_tot_frames = est_video_length_minutes * 60 * fps  # Sets an upper bound # of frames in video clip
-   n = 5                             # Desired interval of frames to include
-   desired_frames = n * np.arange(1200, est_tot_frames)
-   body_cascade = cv2.CascadeClassifier('haar/haarcascade_upperbody.xml')
-   for i in desired_frames:
-      cap.set(1,i-1)
-      ret, img = cap.read(1)
-      if ret:
-         frameId = cap.get(1) # The 0th frame is often a throw-away
-         print("frame : {}".format(frameId))
-         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-         bodies = body_cascade.detectMultiScale(gray, scaleFactor=1.10, minNeighbors=3, minSize=(60,60))
-         for (x,y,w,h) in bodies:
-            cv2.rectangle(img, (x,y), (x+w, y+h), (255, 0, 0), 2)
-            print("body")
-         resize = cv2.resize(img, (853, 480), interpolation=cv2.INTER_AREA)
-         cv2.imshow('frame', resize)
-         out.write(resize)
-      if cv2.waitKey(1) & 0xff == ord('q'):
-         break;
+   command = ["ffprobe",
+      "-loglevel",  "quiet",
+      "-print_format", "json",
+      "-show_format",
+      "-show_streams",
+      vid_file_path
+      ]
+
+   pipe = sp.Popen(command, stdout=sp.PIPE, stderr=sp.STDOUT)
+   out, err = pipe.communicate()
+   return json.loads(out.decode('utf-8'))
+
+
+''' Video's duration in seconds, return a float number
+'''
+def duration(vid_file_path):
+   _json = probe(vid_file_path)
+
+   if 'format' in _json:
+      if 'duration' in _json['format']:
+         return float(_json['format']['duration'])
+
+   if 'streams' in _json:
+      # commonly stream 0 is the video
+      for s in _json['streams']:
+         if 'duration' in s:
+            return float(s['duration'])
+
+   # if everything didn't happen,
+   # we got here because no single 'return' in the above happen.
+   raise Exception('I found no duration')
+   #return None
+
+def doFilter(sig, N=256, Fs=0.1, Fc=30):
+   h = scipy.signal.firwin(numtaps=N, cutoff=Fc, nyq=Fs/2)
+   y = scipy.signal.lfilter(h, 1.0, sig)
+   return y
+
+def inside(r, q):
+   rx, ry, rw, rh = r
+   qx, qy, qw, qh = q
+   return rx > qx and ry > qy and rx + rw < qx + qw and ry + rh < qy + qh
+
+def draw_detections(img, rects, thickness = 1):
+   for x, y, w, h in rects:
+      # the HOG detector returns slightly larger rectangles than the real objects.
+      # so we slightly shrink the rectangles to get a nicer output.
+      pad_w, pad_h = int(0.15*w), int(0.05*h)
+      cv2.rectangle(img, (x+pad_w, y+pad_h), (x+w-pad_w, y+h-pad_h), (150, 150, 220), thickness)
+
+class Finder:
+   def __init__(self, fname, ofname):
+      self.cap = cv2.VideoCapture(args.filename)
+      self.ofname = ofname
+      if self.ofname:
+         self.out = cv2.VideoWriter('output.avi',
+                          cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'),
+                          10,        # frames per sec
+                          (853,480)) # frame resolution
+      self.hog = cv2.HOGDescriptor()
+      self.hog.setSVMDetector( cv2.HOGDescriptor_getDefaultPeopleDetector() )
+      self.fps = self.cap.get(cv2.CAP_PROP_FPS)
+      self.vidLength = duration(args.filename)
+      print("{} : {}".format(self.vidLength, self.fps))
+
+   def __del__(self):
+      self.cap.release()
+
+   def analyze(self, interval=30, ofname="", debug=False):
+      finds = []
+      est_tot_frames = self.vidLength * self.fps  # Sets an upper bound # of frames in video clip
+      n = interval # Desired interval of frames to include
+      desired_frames = n * np.arange(est_tot_frames/n)
+      if ofname:
+         ofile = open(ofname, "wb")
+      last = 0
+      for i in desired_frames:
+         self.cap.set(1,i-1)
+         ret, img = self.cap.read(1)
+         if ret:
+            frameId = self.cap.get(1) # The 0th frame is often a throw-away
+            if debug:
+               print("frame : {}".format(frameId))
+            found, w = self.hog.detectMultiScale(img, hitThreshold=0.2, winStride=(8,8), padding=(32,32), scale=1.05)
+            found_filtered = []
+            for ri, r in enumerate(found):
+                for qi, q in enumerate(found):
+                    if ri != qi and inside(r, q):
+                        break
+                else:
+                    found_filtered.append(r)
+            finds.append((i, found, w, found_filtered))
+            if self.ofname or debug:
+               draw_detections(img, found)
+               draw_detections(img, found_filtered, 3)
+               resize = cv2.resize(img, (853, 480), interpolation=cv2.INTER_AREA)
+            if self.ofname:
+               self.out.write(resize)
+            if debug:
+               print('%d (%d) found' % (len(found_filtered), len(found)))
+               cv2.imshow('frame', resize)
+            if cv2.waitKey(1) & 0xff == ord('q'):
+               break;
+         if debug or (i - last) > 3000:
+            print(i)
+            last = i
+      return finds
 
 if __name__ == "__main__":
-
    parser = argparse.ArgumentParser()
    parser.add_argument("-n", "--filename", help="name of video file to process", default="video.mp4")
+   parser.add_argument("-i", "--interval", help="frame skip interval", type=int, default=30)
+   parser.add_argument("-c", "--csvoutput", help="write analysis to csv", default="")
+   parser.add_argument("-o", "--output", help="write bounding box to video avi file", default="")
+   parser.add_argument("-Fs", help="sample frequency (hz)", type=float, default = 30)
+   parser.add_argument("-Fc", help="low pass filter center frequency (hz)", type=float, default = 0.01)
+   parser.add_argument("-N", help="low pass filter number of taps", type=float, default = 256)
+   parser.add_argument("-d", "--debug", help="debug", action='store_true')
    args = parser.parse_args()
-   cap = cv2.VideoCapture(args.filename)
-   out = cv2.VideoWriter('output.avi',cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 10, (853,480))
-   if cap:
-      process(cap, out)
-      cap.release()
+   finder = Finder(args.filename, args.output)
+   stats = finder.analyze(interval=args.interval, debug=args.debug)
    cv2.destroyAllWindows()
+   times = np.array([s[0]/finder.fps for s in stats])
+   num = doFilter(np.array([len(s[1]) for s in stats]), args.N, args.Fs, args.Fc)
+   if args.csvoutput:
+      with open(args.csvoutput, "w") as ofile:
+         for i in range(len(times)):
+            ofile.write("{},{}\n".format(times[i], num[i]))
+   plt.plot(times, num)
+   plt.show()
