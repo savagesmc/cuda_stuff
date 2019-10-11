@@ -70,7 +70,7 @@ class Finder:
       self.cap = cv2.VideoCapture(args.filename)
       self.ofname = ofname
       if self.ofname:
-         self.out = cv2.VideoWriter('output.avi',
+         self.out = cv2.VideoWriter(self.ofname,
                           cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'),
                           10,        # frames per sec
                           (853,480)) # frame resolution
@@ -195,11 +195,11 @@ if __name__ == "__main__":
       cur = classified[i]
       if cur != prev:
          if cur == 1:
-            starts.append(times[i])
-         else:
             ends.append(times[i])
             if len(starts) != len(ends):
               starts.append(times[i])
+         else:
+            starts.append(times[i])
          prev = cur
 
    for i in range(min(len(starts), len(ends))):
@@ -210,12 +210,16 @@ if __name__ == "__main__":
    dur = np.array(dur)
 
    def getTime(x):
-      hour = int(x/3600)
+      if x < 0:
+         x = 0
+      o = x
+      hour = int(x//3600)
       x -= 3600*hour
-      minute = int(x/60)
+      minute = int(x//60)
       x -= 60*minute
       second = int(x)
       x -= second
+      print("{} {} {} {} {}".format(o, hour, minute, second, x))
       return datetime.time(hour=hour, minute=minute, second=second, microsecond=int(x*1e6))
 
    sermonIdx = np.argmax(dur)

@@ -34,13 +34,13 @@ inline void __check_cuda_errors__(T code, const char *func, const char *file, in
 int main(int argc, char *argv[]) {
 
     // Number of FFTs to compute.
-    const int NUM_DATAs[] = {1024, 1024, 512, 512, 256, 256, 128, 64, 64};
+    const int NUM_DATAs[] = {64*1024, 64*1024, 32*1024, 32*1024, 16*1024, 16*1024, 8*1024, 4*1024, 4*1024};
 
     // Length of each FFT.
     const int Ns[] = {128, 256, 512, 1024, 4096, 8192, 16636, 32768, 65536};
 
     // Number of GPU streams across which to distribute the FFTs.
-    const int NUM_STREAMSs[] = { 256, 256, 128, 128, 64, 64, 32, 16, 16 };
+    const int NUM_STREAMSs[] = { 32, 32, 32, 32, 32, 32, 32, 32, 32 };
 
     for (auto nn = 0; nn < 9; ++nn)
     {
