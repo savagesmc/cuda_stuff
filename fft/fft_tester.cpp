@@ -1,15 +1,18 @@
 #include <iostream>
 #include <iomanip>
+#include <string>
 #include <cmath>
 #include <chrono>
 #include <fstream>
+#include <list>
 #include "TimeStat.h"
 #include "Fft.h"
 
 using namespace std;
 using namespace std::chrono;
 
-typedef Signals::Complex Complex;
+using Signals::Complex;
+using Signals::ComplexVec;
 
 const float pi = atan2(1.0, 1.0) * 4.0;
 
@@ -17,76 +20,76 @@ const float freq     = 100.;
 const float T        = 0.001;
 const float omega    = 2 * pi * freq;
 
-void doTest(Signals::Fft fft, float frequency, int numSamples, bool printTime = false, bool outputToFile = false)
+void doTest(Signals::Fft fft, float frequency, int numSamples, int numFfts, bool printTime = false, bool outputToFile = false)
 {
-   ostringstream ostr;
-   ostr << "complexFft(" << setw(8) << numSamples << ")";
+  ostringstream ostr;
+  ostr << "complexFft(" << setw(8) << numSamples << ")";
 
-   ofstream ofile("output.csv");
-   ofstream ifile("input.csv");
+  ofstream ofile("output.csv");
+  ofstream ifile("input.csv");
 
-   std::vector<Complex> samples;
-   for (auto i = 0; i < numSamples; ++i)
-   {
-      auto t = i * T;
-      auto rad = omega * t;
-      samples.push_back(Complex(cos(rad), sin(rad)));
-   }
+  ComplexVec samples;
+  ComplexVec resultSamps;
+  for (auto i = 0; i < numSamples; ++i)
+  {
+    auto t = i * T;
+    auto rad = omega * t;
+    samples.push_back(Complex(cos(rad), sin(rad)));
+  }
 
-   if (outputToFile)
-   {
-      for (auto&& s : samples)
-      {
-         ifile << s.real() << ", " << s.imag() << "\n";
+  if (outputToFile)
+  {
+    for (auto&& s : samples)
+    {
+      ifile << s.real() << ", " << s.imag() << "\n";
+    }
+  }
+
+  steady_clock::duration totalTime;
+  {
+    TimeStat ts("complexFft["+to_string(numSamples)+"]:", numFfts);
+    typedef std::future<ComplexVec> Future;
+    std::list<Future> futures;
+    int numSubmitted = 0;
+    int numComplete = 0;
+    while (numComplete < numFfts)
+    {
+      while (!fft.busy() && (numSubmitted < numFfts)) {
+        auto f = fft.submit(samples);
+        futures.emplace_back(std::move(f));
+        numSubmitted += 1;
       }
-   }
-
-   {
-      const int numTimes = 5000;
-      TimeStat ts(ostr.str(), numTimes);
-      for (auto i=0; i<numTimes; ++i)
+      std::list<Future>::iterator iter;
+      for (iter = futures.begin(); iter != futures.end();)
       {
-         std::vector<Complex> cpySamps = samples;
-         fft.submit(cpySamps);
+        auto temp = iter++;
+        if (temp->wait_for(milliseconds(0)) == future_status::ready)
+        {
+          numComplete += 1;
+          resultSamps = std::move(temp->get());
+          futures.erase(temp);
+        }
       }
-   }
+    }
+    totalTime = ts.elapsed();
+  }
 
+  std::cout << "FFT [" << fft.fftSize() << "," << numSamples << "]::Samples Per Second: " << numFfts * numSamples / duration_cast<duration<double>>(totalTime).count() << std::endl;
 
-   std::vector<Complex> resultSamps;
-   {
-      const int numTimes = 5000;
-      TimeStat ts(ostr.str(), numTimes);
-      for (auto i=0; i<numTimes; ++i)
-      {
-         std::vector<Complex> cpySamps = fft.result();
-         resultSamps = cpySamps;
-      }
-   }
-
-   if (outputToFile)
-   {
-      for (auto s : samples)
-      {
-         ofile << s.real() << ", " << s.imag() << "\n";
-      }
-      ofile.flush();
-   }
+  if (outputToFile)
+  {
+    for (auto s : resultSamps)
+    {
+      ofile << s.real() << ", " << s.imag() << "\n";
+    }
+    ofile.flush();
+  }
 }
 
 
 int main(int argc, char* argv[])
 {
-   doTest(Signals::Fft(1024), 5.0, 1024, false);
-   // doTest(fft, 5.0, 1024);
-   // doTest(fft, 5.0, 2048);
-   // doTest(fft, 5.0, 4096);
-   // doTest(fft, 5.0, 8192);
-   doTest(Signals::Fft(16384), 5.0, 16384);
-   // doTest(fft, 5.0, 16384*2);
-   // doTest(fft, 5.0, 16384*4);
-   // doTest(fft, 5.0, 16384*8);
-   // doTest(fft, 5.0, 16384*16);
-   // doTest(fft, 5.0, 16384*32);
-   doTest(Signals::Fft(16384*64), 5.0, 16384*64);
-   doTest(Signals::Fft(16384*64), 5.0, 16384*64, true, true);
+  doTest(Signals::Fft(1024, 128*1024), 5.0, 128*1024, 50, true, true);
+  doTest(Signals::Fft(4096, 128*1024), 5.0, 128*1024, 25, true, true);
+  doTest(Signals::Fft(16384, 128*1024), 5.0, 128*1024, 10, true, true);
 }

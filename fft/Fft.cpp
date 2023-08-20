@@ -3,126 +3,86 @@
 #include <complex>
 #include <memory>
 #include <thread>
-#include <mutex>
-#include <condition_variable>
-#include <list>
+#include <future>
 #include <chrono>
 #include "FftTypes.h"
 #include "GpuFft.h"
-#include "Queue.h"
-#include <boost/optional.hpp>
+
+#include <iostream>
+#include <iomanip>
+#include <string>
 
 using namespace std;
-
-using boost::optional;
-using boost::none;
 
 namespace Signals
 {
 
-typedef Util::Queue<vector<Complex>> Queue;
 using GpuUtils::FftEngine;
 
-class FftThread
+struct Fft::Impl
 {
-   bool exit_;
-   Queue& inQ_;
-   Queue& outQ_;
-   std::thread thd_;
-   FftEngine eng_;
-public:
+  const int numThreads_;
+  int fftSize_;
+  int blkSize_;
+  std::vector<std::unique_ptr<FftEngine>> engines_;
+  Impl(int fftSz, int blkSz, bool debug)
+  : numThreads_(10), fftSize_(fftSz), blkSize_(blkSz)
+  {
+    for (int i = 0; i < numThreads_; ++i)
+    {
+      engines_.push_back(std::make_unique<FftEngine>(fftSz, blkSz, debug));
+    }
+  }
 
-   FftThread(int sz, Queue& in, Queue& out)
-   : exit_(false)
-   , inQ_(in)
-   , outQ_(out)
-   , thd_(std::bind(&FftThread::exec, this))
-   , eng_(sz)
-   { }
+  ~Impl()
+  { }
 
-   ~FftThread()
-   {
-      exit_ = true;
-      thd_.join();
-   }
-
-   void exec()
-   {
-      while (!exit_)
+  std::future<ComplexVec> submit(std::vector<Complex> samples)
+  {
+    for (std::vector<std::unique_ptr<FftEngine>>::iterator eng=engines_.begin();
+         eng != engines_.end();
+         ++eng)
+    {
+      if (!(*eng)->busy())
       {
-         auto v = inQ_.pop();
-         if (v) {
-            eng_(*v);
-            outQ_.push(std::move(*v));
-         }
+        return (*eng)->dofft(samples);
       }
-   }
+    }
+    throw std::runtime_error("No available fft engine.");
+  }
+
+  bool busy() const
+  {
+    for (std::vector<std::unique_ptr<FftEngine>>::const_iterator eng=engines_.begin();
+         eng != engines_.end();
+         ++eng)
+    {
+      if (!(*eng)->busy())
+      {
+        return false;
+      }
+    }
+    return true;
+  }
+
 };
 
-class Fft::Impl
-{
-   Queue inQ_;
-   Queue outQ_;
-   const int numThreads_;
-   std::vector<FftThread*> thdPool_;
-public:
-   Impl(int sz)
-   : inQ_()
-     , outQ_()
-     , numThreads_(10)
-     ,thdPool_(numThreads_)
-   {
-      for (int i = 0; i < numThreads_; ++i)
-      {
-         thdPool_[i] = new FftThread(sz, inQ_, outQ_);
-      }
-   }
-
-   ~Impl()
-   {
-      for (int i = 0; i < numThreads_; ++i)
-      {
-         delete thdPool_[i];
-      }
-   }
-
-   void debug(bool enableDisable)
-   {
-      //TODO
-   }
-
-   void submit(std::vector<Complex> samples)
-   {
-      inQ_.push(std::move(samples));
-   }
-
-   // TODO: Replace with futures
-   std::vector<Complex> result()
-   {
-      auto v = outQ_.pop();
-      while(!v) {
-         v = outQ_.pop();
-      }
-      return *v;
-   }
-};
-
-Fft::Fft(int sz) : impl_(new Impl(sz)) { }
+Fft::Fft(int fftSz, int blkSz, bool debug) : impl_(new Impl(fftSz, blkSz, debug)) { }
 Fft::~Fft() { }
 
-void Fft::debug(bool enableDisable)
+std::future<ComplexVec> Fft::submit(ComplexVec& samples)
 {
-   impl_->debug(enableDisable);
+  return impl_->submit(samples);
 }
 
-void Fft::submit(std::vector<Complex> samples)
+int Fft::fftSize() const
 {
-   impl_->submit(std::move(samples));
+  return impl_->fftSize_;
 }
 
-std::vector<Complex> Fft::result()
+bool Fft::busy() const
 {
-   return impl_->result();
+  return impl_->busy();
 }
 
 }

@@ -5,28 +5,28 @@
 #include <vector>
 #include <complex>
 #include <memory>
+#include <future>
 
 #include "FftTypes.h"
 
 namespace GpuUtils
 {
-   using Signals::Complex;
+using Signals::Complex;
+using Signals::ComplexVec;
 
-   class FftEngine
-   {
-   public:
+class FftEngine
+{
+public:
 
-      FftEngine(int size);
-      ~FftEngine();
+  FftEngine(int fftSize, int blockSize, bool debug=false);
+  ~FftEngine();
+  std::future<ComplexVec> dofft(ComplexVec& samples);
+  bool busy() const;
 
-      void debug(bool enableDisable);
-
-      void operator()(std::vector<Complex>& samples);
-
-   private:
-      class Impl;
-      std::unique_ptr<Impl> impl_;
-   };
+  class Impl;
+private:
+  std::unique_ptr<Impl> impl_;
+};
 }
 
 #endif

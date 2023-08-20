@@ -3,10 +3,12 @@
 #pragma once
 
 #include <complex>
+#include <vector>
 
 namespace Signals
 {
    typedef std::complex<float> Complex;
+   typedef std::vector<Complex> ComplexVec;
 }
 
 #endif

@@ -24,4 +24,7 @@ public:
          cout << label << " " << (dur.count()) << endl;
       }
    }
+   std::chrono::steady_clock::duration elapsed() const {
+      return std::chrono::steady_clock::now() - start;
+   }
 };
